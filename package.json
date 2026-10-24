@@ -1,0 +1,11 @@
+{
+  "name": "slatepaste",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev --port 8788",
+    "deploy": "wrangler pages deploy --branch main"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  }
+}

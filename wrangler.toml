@@ -1,0 +1,9 @@
+name = "slatepaste"
+pages_build_output_dir = "public"
+compatibility_date = "2026-10-01"
+
+# Forks: replace this id with your own namespace's
+# (npx wrangler kv namespace create slatepaste-pastes).
+[[kv_namespaces]]
+binding = "PASTES"
+id = "f4704ede51d04e9887dedf23144523bd"

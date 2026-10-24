@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>slatepaste</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main class="wrap">
+  <section id="login" class="login hidden">
+    <div class="brand">slatepaste</div>
+    <p>Internal paste bin. Enter the password to create pastes.</p>
+    <form id="login-form" class="row">
+      <input id="key" class="grow" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button class="btn primary">Unlock</button>
+    </form>
+    <p id="login-error" class="error hidden">Wrong password.</p>
+  </section>
+
+  <section id="app" class="hidden">
+    <header class="bar">
+      <span class="brand">slatepaste</span>
+      <div class="actions"><button id="lock" class="btn">Lock</button></div>
+    </header>
+
+    <form id="paste-form">
+      <div class="row">
+        <input id="title" class="grow" placeholder="Title (optional)" maxlength="200">
+        <select id="expires" aria-label="Expires">
+          <option value="never">Never expires</option>
+          <option value="1h">1 hour</option>
+          <option value="1d">1 day</option>
+          <option value="7d">7 days</option>
+          <option value="30d">30 days</option>
+        </select>
+      </div>
+      <textarea id="content" placeholder="Paste anything…" spellcheck="false" required></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="save" class="btn primary">Create paste</button>
+        <span class="meta" style="align-self:center;margin:0">⌘/Ctrl + Enter to save · anyone with the link can read it</span>
+      </div>
+    </form>
+    <div id="result" class="notice hidden"></div>
+
+    <h2>Recent</h2>
+    <ul id="list" class="list"></ul>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get() { try { return localStorage.getItem("slatepaste-key") || ""; } catch { return ""; } },
+  set(v) { try { v ? localStorage.setItem("slatepaste-key", v) : localStorage.removeItem("slatepaste-key"); } catch {} },
+};
+let key = store.get();
+
+const api = (path, opts = {}) =>
+  fetch(path, { ...opts, headers: { "content-type": "application/json", "x-paste-key": key, ...(opts.headers || {}) } });
+
+async function unlock(candidate) {
+  key = candidate;
+  const res = await api("/api/paste");
+  if (res.status === 401) { key = ""; store.set(""); show(false); return false; }
+  store.set(key);
+  show(true);
+  render((await res.json()).items);
+  return true;
+}
+
+function show(on) {
+  $("login").classList.toggle("hidden", on);
+  $("app").classList.toggle("hidden", !on);
+  if (on) $("content").focus(); else $("key").focus();
+}
+
+function render(items) {
+  const list = $("list");
+  list.replaceChildren();
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="when">No pastes yet.</span>';
+    list.append(li);
+    return;
+  }
+  for (const p of items) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = `/p/${p.id}`;
+    a.textContent = p.title || "Untitled";
+    const when = document.createElement("span");
+    when.className = "when";
+    when.textContent = new Date(p.created).toLocaleString() + (p.expires ? " · expires" : "");
+    const del = document.createElement("button");
+    del.className = "x";
+    del.textContent = "Delete";
+    del.title = "Delete paste";
+    del.onclick = async () => {
+      if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "Confirm?"; return; }
+      await api(`/api/paste/${p.id}`, { method: "DELETE" });
+      refresh();
+    };
+    li.append(a, when, del);
+    list.append(li);
+  }
+}
+
+async function refresh() {
+  const res = await api("/api/paste");
+  if (res.ok) render((await res.json()).items);
+}
+
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const ok = await unlock($("key").value);
+  $("login-error").classList.toggle("hidden", ok);
+});
+
+$("lock").addEventListener("click", () => { key = ""; store.set(""); show(false); });
+
+$("paste-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("save").disabled = true;
+  try {
+    const res = await api("/api/paste", {
+      method: "POST",
+      body: JSON.stringify({ title: $("title").value, content: $("content").value, expires: $("expires").value }),
+    });
+    const data = await res.json();
+    const out = $("result");
+    out.classList.remove("hidden");
+    if (!res.ok) { out.innerHTML = `<span class="error">${data.error || "Failed"}</span>`; return; }
+    out.innerHTML = `Saved: <a href="${data.url}">${data.url}</a> <button class="btn" id="copy-link" type="button">Copy link</button>`;
+    $("copy-link").onclick = () => { navigator.clipboard.writeText(data.url); $("copy-link").textContent = "Copied"; };
+    $("content").value = "";
+    $("title").value = "";
+    refresh();
+  } finally {
+    $("save").disabled = false;
+  }
+});
+
+$("content").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("paste-form").requestSubmit();
+});
+
+if (key) unlock(key); else show(false);
+</script>
+</body>
+</html>
